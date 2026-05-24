@@ -4,3 +4,11 @@
 *.vvp
 *.kate-swp
 
+# Quartus generated project/build artifacts
+example/*/fpga*/fpga/*.qpf
+example/*/fpga*/fpga/*.qsf
+example/*/fpga*/fpga/*.qws
+example/*/fpga*/fpga/db/
+example/*/fpga*/fpga/incremental_db/
+example/*/fpga*/fpga/output_files/
+example/*/fpga*/fpga/simulation/
