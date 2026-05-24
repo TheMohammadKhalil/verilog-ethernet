@@ -118,8 +118,33 @@ wire fifo_1_to_0_overflow;
 wire fifo_1_to_0_bad_frame;
 wire fifo_1_to_0_good_frame;
 
+wire mac0_rx_error_bad_frame;
+wire mac0_rx_error_bad_fcs;
+wire mac0_rx_fifo_overflow;
+wire mac0_rx_fifo_bad_frame;
+wire mac0_rx_fifo_good_frame;
+wire mac0_tx_fifo_overflow;
+wire mac0_tx_fifo_bad_frame;
+wire mac0_tx_fifo_good_frame;
+wire [1:0] mac0_speed;
+
+wire mac1_rx_error_bad_frame;
+wire mac1_rx_error_bad_fcs;
+wire mac1_rx_fifo_overflow;
+wire mac1_rx_fifo_bad_frame;
+wire mac1_rx_fifo_good_frame;
+wire mac1_tx_fifo_overflow;
+wire mac1_tx_fifo_bad_frame;
+wire mac1_tx_fifo_good_frame;
+wire [1:0] mac1_speed;
+
 wire forward_0_to_1 = rx0_axis_tvalid && rx0_axis_tready && rx0_axis_tlast && !rx0_axis_tuser;
 wire forward_1_to_0 = rx1_axis_tvalid && rx1_axis_tready && rx1_axis_tlast && !rx1_axis_tuser;
+
+wire rx0_frame = rx0_axis_tvalid && rx0_axis_tready && rx0_axis_tlast;
+wire rx1_frame = rx1_axis_tvalid && rx1_axis_tready && rx1_axis_tlast;
+wire tx0_frame = tx0_axis_tvalid && tx0_axis_tready && tx0_axis_tlast;
+wire tx1_frame = tx1_axis_tvalid && tx1_axis_tready && tx1_axis_tlast;
 
 reg [23:0] phy_reset_counter_reg = 24'd0;
 reg phy_reset_n_reg = 1'b0;
@@ -143,19 +168,58 @@ assign phy0_reset_n = phy_reset_n_reg;
 assign phy1_reset_n = phy_reset_n_reg;
 
 assign gpio = 36'd0;
-assign ledr = sw;
 
 reg [25:0] heartbeat_counter_reg = 26'd0;
 reg [31:0] forward_count_0_to_1_reg = 32'd0;
 reg [31:0] forward_count_1_to_0_reg = 32'd0;
+reg [23:0] rx0_activity_timer_reg = 24'd0;
+reg [23:0] rx1_activity_timer_reg = 24'd0;
+reg [23:0] tx0_activity_timer_reg = 24'd0;
+reg [23:0] tx1_activity_timer_reg = 24'd0;
 
 always @(posedge clk) begin
     if (mac_rst) begin
         heartbeat_counter_reg <= 26'd0;
         forward_count_0_to_1_reg <= 32'd0;
         forward_count_1_to_0_reg <= 32'd0;
+        rx0_activity_timer_reg <= 24'd0;
+        rx1_activity_timer_reg <= 24'd0;
+        tx0_activity_timer_reg <= 24'd0;
+        tx1_activity_timer_reg <= 24'd0;
     end else begin
         heartbeat_counter_reg <= heartbeat_counter_reg + 1'b1;
+
+        if (rx0_activity_timer_reg != 0) begin
+            rx0_activity_timer_reg <= rx0_activity_timer_reg - 1'b1;
+        end
+
+        if (rx1_activity_timer_reg != 0) begin
+            rx1_activity_timer_reg <= rx1_activity_timer_reg - 1'b1;
+        end
+
+        if (tx0_activity_timer_reg != 0) begin
+            tx0_activity_timer_reg <= tx0_activity_timer_reg - 1'b1;
+        end
+
+        if (tx1_activity_timer_reg != 0) begin
+            tx1_activity_timer_reg <= tx1_activity_timer_reg - 1'b1;
+        end
+
+        if (rx0_frame) begin
+            rx0_activity_timer_reg <= {24{1'b1}};
+        end
+
+        if (rx1_frame) begin
+            rx1_activity_timer_reg <= {24{1'b1}};
+        end
+
+        if (tx0_frame) begin
+            tx0_activity_timer_reg <= {24{1'b1}};
+        end
+
+        if (tx1_frame) begin
+            tx1_activity_timer_reg <= {24{1'b1}};
+        end
 
         if (forward_0_to_1) begin
             forward_count_0_to_1_reg <= forward_count_0_to_1_reg + 1'b1;
@@ -168,13 +232,32 @@ always @(posedge clk) begin
 end
 
 assign ledg = {
+    !mac_rst,
+    mac1_speed[1],
+    mac0_speed[1],
+    mac0_rx_error_bad_frame || mac0_rx_error_bad_fcs || mac1_rx_error_bad_frame || mac1_rx_error_bad_fcs,
+    tx1_activity_timer_reg != 0,
+    tx0_activity_timer_reg != 0,
+    rx1_activity_timer_reg != 0,
+    rx0_activity_timer_reg != 0,
+    heartbeat_counter_reg[25]
+};
+
+assign ledr = {
+    !mac_rst,
+    fifo_1_to_0_overflow,
+    fifo_0_to_1_overflow,
+    mac1_rx_fifo_overflow,
+    mac0_rx_fifo_overflow,
+    mac1_tx_fifo_overflow,
+    mac0_tx_fifo_overflow,
+    mac1_rx_fifo_bad_frame,
+    mac0_rx_fifo_bad_frame,
+    mac1_tx_fifo_bad_frame,
+    mac0_tx_fifo_bad_frame,
+    mac1_speed,
+    mac0_speed,
     heartbeat_counter_reg[25],
-    !phy1_int_n,
-    !phy0_int_n,
-    tx1_axis_tready,
-    tx0_axis_tready,
-    rx1_axis_tvalid,
-    rx0_axis_tvalid,
     forward_count_1_to_0_reg[0],
     forward_count_0_to_1_reg[0]
 };
@@ -317,15 +400,15 @@ eth_mac_inst (
     .rgmii_tx_ctl(phy0_tx_ctl),
 
     .tx_error_underflow(),
-    .tx_fifo_overflow(),
-    .tx_fifo_bad_frame(),
-    .tx_fifo_good_frame(),
-    .rx_error_bad_frame(),
-    .rx_error_bad_fcs(),
-    .rx_fifo_overflow(),
-    .rx_fifo_bad_frame(),
-    .rx_fifo_good_frame(),
-    .speed(),
+    .tx_fifo_overflow(mac0_tx_fifo_overflow),
+    .tx_fifo_bad_frame(mac0_tx_fifo_bad_frame),
+    .tx_fifo_good_frame(mac0_tx_fifo_good_frame),
+    .rx_error_bad_frame(mac0_rx_error_bad_frame),
+    .rx_error_bad_fcs(mac0_rx_error_bad_fcs),
+    .rx_fifo_overflow(mac0_rx_fifo_overflow),
+    .rx_fifo_bad_frame(mac0_rx_fifo_bad_frame),
+    .rx_fifo_good_frame(mac0_rx_fifo_good_frame),
+    .speed(mac0_speed),
 
     .cfg_ifg(8'd12),
     .cfg_tx_enable(1'b1),
@@ -371,15 +454,15 @@ eth_mac_1_inst (
     .rgmii_tx_ctl(phy1_tx_ctl),
 
     .tx_error_underflow(),
-    .tx_fifo_overflow(),
-    .tx_fifo_bad_frame(),
-    .tx_fifo_good_frame(),
-    .rx_error_bad_frame(),
-    .rx_error_bad_fcs(),
-    .rx_fifo_overflow(),
-    .rx_fifo_bad_frame(),
-    .rx_fifo_good_frame(),
-    .speed(),
+    .tx_fifo_overflow(mac1_tx_fifo_overflow),
+    .tx_fifo_bad_frame(mac1_tx_fifo_bad_frame),
+    .tx_fifo_good_frame(mac1_tx_fifo_good_frame),
+    .rx_error_bad_frame(mac1_rx_error_bad_frame),
+    .rx_error_bad_fcs(mac1_rx_error_bad_fcs),
+    .rx_fifo_overflow(mac1_rx_fifo_overflow),
+    .rx_fifo_bad_frame(mac1_rx_fifo_bad_frame),
+    .rx_fifo_good_frame(mac1_rx_fifo_good_frame),
+    .speed(mac1_speed),
 
     .cfg_ifg(8'd12),
     .cfg_tx_enable(1'b1),

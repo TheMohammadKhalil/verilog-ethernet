@@ -60,19 +60,25 @@ module fpga (
     output wire        ENET0_GTX_CLK,
     output wire [3:0]  ENET0_TX_DATA,
     output wire        ENET0_TX_EN,
+    output wire        ENET0_TX_ER,
     input  wire        ENET0_RX_CLK,
     input  wire [3:0]  ENET0_RX_DATA,
     input  wire        ENET0_RX_DV,
     output wire        ENET0_RST_N,
+    output wire        ENET0_MDC,
+    inout  wire        ENET0_MDIO,
     input  wire        ENET0_INT_N,
 
     output wire        ENET1_GTX_CLK,
     output wire [3:0]  ENET1_TX_DATA,
     output wire        ENET1_TX_EN,
+    output wire        ENET1_TX_ER,
     input  wire        ENET1_RX_CLK,
     input  wire [3:0]  ENET1_RX_DATA,
     input  wire        ENET1_RX_DV,
     output wire        ENET1_RST_N,
+    output wire        ENET1_MDC,
+    inout  wire        ENET1_MDIO,
     input  wire        ENET1_INT_N
 );
 
@@ -205,6 +211,14 @@ assign HEX4 = HEX_OFF;
 assign HEX5 = HEX_OFF;
 assign HEX6 = HEX_OFF;
 assign HEX7 = HEX_OFF;
+
+assign ENET0_TX_ER = 1'b0;
+assign ENET1_TX_ER = 1'b0;
+
+assign ENET0_MDC = 1'b0;
+assign ENET1_MDC = 1'b0;
+assign ENET0_MDIO = 1'bz;
+assign ENET1_MDIO = 1'bz;
 
 // GPIO
 wire [3:0] btn_int;
