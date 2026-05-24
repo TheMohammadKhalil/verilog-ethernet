@@ -148,9 +148,17 @@ wire [1:0] mac1_speed;
 
 wire phy0_config_done;
 wire phy1_config_done;
-wire phy_config_done = phy0_config_done && phy1_config_done;
 wire phy0_config_busy;
 wire phy1_config_busy;
+wire phy0_link_up;
+wire phy1_link_up;
+wire phy0_link_1g;
+wire phy1_link_1g;
+wire phy0_full_duplex;
+wire phy1_full_duplex;
+wire phy0_link_ready = phy0_config_done && phy0_link_up && phy0_link_1g && phy0_full_duplex;
+wire phy1_link_ready = phy1_config_done && phy1_link_up && phy1_link_1g && phy1_full_duplex;
+wire phy_link_ready = phy0_link_ready && phy1_link_ready;
 
 wire forward_0_to_1 = rx0_axis_tvalid && rx0_axis_tready && rx0_axis_tlast && !rx0_axis_tuser;
 wire forward_1_to_0 = rx1_axis_tvalid && rx1_axis_tready && rx1_axis_tlast && !rx1_axis_tuser;
@@ -163,7 +171,7 @@ wire tx1_frame = tx1_axis_tvalid && tx1_axis_tready && tx1_axis_tlast;
 reg [23:0] phy_reset_counter_reg = 24'd0;
 reg phy_reset_n_reg = 1'b0;
 
-wire mac_rst = rst || !phy_reset_n_reg || !phy_config_done;
+wire mac_rst = rst || !phy_reset_n_reg || !phy_link_ready;
 
 always @(posedge clk) begin
     if (rst) begin
@@ -195,7 +203,10 @@ phy0_mdio_config_inst (
     .mdio_o(phy0_mdio_o),
     .mdio_t(phy0_mdio_t),
     .busy(phy0_config_busy),
-    .done(phy0_config_done)
+    .done(phy0_config_done),
+    .link_up(phy0_link_up),
+    .link_1g(phy0_link_1g),
+    .full_duplex(phy0_full_duplex)
 );
 
 mdio_phy_config #(
@@ -210,7 +221,10 @@ phy1_mdio_config_inst (
     .mdio_o(phy1_mdio_o),
     .mdio_t(phy1_mdio_t),
     .busy(phy1_config_busy),
-    .done(phy1_config_done)
+    .done(phy1_config_done),
+    .link_up(phy1_link_up),
+    .link_1g(phy1_link_1g),
+    .full_duplex(phy1_full_duplex)
 );
 
 reg [25:0] heartbeat_counter_reg = 26'd0;
@@ -222,8 +236,13 @@ reg [23:0] tx0_activity_timer_reg = 24'd0;
 reg [23:0] tx1_activity_timer_reg = 24'd0;
 
 always @(posedge clk) begin
-    if (mac_rst) begin
+    if (rst) begin
         heartbeat_counter_reg <= 26'd0;
+    end else begin
+        heartbeat_counter_reg <= heartbeat_counter_reg + 1'b1;
+    end
+
+    if (mac_rst) begin
         forward_count_0_to_1_reg <= 32'd0;
         forward_count_1_to_0_reg <= 32'd0;
         rx0_activity_timer_reg <= 24'd0;
@@ -231,8 +250,6 @@ always @(posedge clk) begin
         tx0_activity_timer_reg <= 24'd0;
         tx1_activity_timer_reg <= 24'd0;
     end else begin
-        heartbeat_counter_reg <= heartbeat_counter_reg + 1'b1;
-
         if (rx0_activity_timer_reg != 0) begin
             rx0_activity_timer_reg <= rx0_activity_timer_reg - 1'b1;
         end
@@ -277,8 +294,8 @@ end
 
 assign ledg = {
     !mac_rst,
-    mac1_speed[1],
-    mac0_speed[1],
+    phy1_link_ready,
+    phy0_link_ready,
     mac0_rx_error_bad_frame || mac0_rx_error_bad_fcs || mac1_rx_error_bad_frame || mac1_rx_error_bad_fcs,
     tx1_activity_timer_reg != 0,
     tx0_activity_timer_reg != 0,
@@ -288,7 +305,7 @@ assign ledg = {
 };
 
 assign ledr = {
-    !mac_rst,
+    phy_link_ready,
     fifo_1_to_0_overflow,
     fifo_0_to_1_overflow,
     mac1_rx_fifo_overflow,
@@ -299,8 +316,10 @@ assign ledr = {
     mac0_rx_fifo_bad_frame,
     mac1_tx_fifo_bad_frame,
     mac0_tx_fifo_bad_frame,
-    mac1_speed,
-    mac0_speed,
+    phy1_link_up,
+    phy1_link_1g,
+    phy0_link_up,
+    phy0_link_1g,
     heartbeat_counter_reg[25],
     forward_count_1_to_0_reg[0],
     forward_count_0_to_1_reg[0]
@@ -531,7 +550,10 @@ module mdio_phy_config #
     output wire mdio_t,
 
     output wire busy,
-    output wire done
+    output wire done,
+    output wire link_up,
+    output wire link_1g,
+    output wire full_duplex
 );
 
 localparam [4:0]
@@ -556,12 +578,15 @@ localparam [4:0]
     STATE_WAIT_W9      = 5'd18,
     STATE_ISSUE_AN     = 5'd19,
     STATE_WAIT_AN      = 5'd20,
-    STATE_DONE         = 5'd21;
+    STATE_DONE         = 5'd21,
+    STATE_ISSUE_R17    = 5'd22,
+    STATE_WAIT_R17     = 5'd23;
 
 localparam [4:0]
     PHY_REG_BMCR       = 5'd0,
     PHY_REG_ANAR       = 5'd4,
     PHY_REG_1000_CTRL  = 5'd9,
+    PHY_REG_PHY_STATUS = 5'd17,
     PHY_REG_EXT_CTRL   = 5'd20,
     PHY_REG_EXT_STATUS = 5'd27;
 
@@ -580,7 +605,11 @@ reg [23:0] delay_counter_reg = 24'd0;
 reg [15:0] reg20_reg = 16'd0;
 reg [15:0] reg27_reg = 16'd0;
 reg [15:0] reg9_reg = 16'd0;
+reg [15:0] phy_status_reg = 16'd0;
 reg done_reg = 1'b0;
+reg link_up_reg = 1'b0;
+reg link_1g_reg = 1'b0;
+reg full_duplex_reg = 1'b0;
 
 reg cmd_valid_reg = 1'b0;
 reg cmd_read_reg = 1'b0;
@@ -593,6 +622,9 @@ wire [15:0] resp_read_data;
 
 assign busy = !done_reg;
 assign done = done_reg;
+assign link_up = link_up_reg;
+assign link_1g = link_1g_reg;
+assign full_duplex = full_duplex_reg;
 
 mdio_master mdio_master_inst (
     .clk(clk),
@@ -623,7 +655,11 @@ always @(posedge clk) begin
         reg20_reg <= 16'd0;
         reg27_reg <= 16'd0;
         reg9_reg <= 16'd0;
+        phy_status_reg <= 16'd0;
         done_reg <= 1'b0;
+        link_up_reg <= 1'b0;
+        link_1g_reg <= 1'b0;
+        full_duplex_reg <= 1'b0;
     end else begin
         case (state_reg)
             STATE_IDLE: begin
@@ -780,6 +816,30 @@ always @(posedge clk) begin
             end
             STATE_DONE: begin
                 done_reg <= 1'b1;
+                delay_counter_reg <= delay_counter_reg + 1'b1;
+
+                if (delay_counter_reg >= POST_RESET_DELAY) begin
+                    delay_counter_reg <= 24'd0;
+                    state_reg <= STATE_ISSUE_R17;
+                end
+            end
+            STATE_ISSUE_R17: begin
+                if (cmd_ready) begin
+                    cmd_valid_reg <= 1'b1;
+                    cmd_read_reg <= 1'b1;
+                    cmd_reg_addr_reg <= PHY_REG_PHY_STATUS;
+                    cmd_write_data_reg <= 16'd0;
+                    state_reg <= STATE_WAIT_R17;
+                end
+            end
+            STATE_WAIT_R17: begin
+                if (resp_valid) begin
+                    phy_status_reg <= resp_read_data;
+                    link_up_reg <= resp_read_data[10] && resp_read_data[11];
+                    link_1g_reg <= resp_read_data[15:14] == 2'b10;
+                    full_duplex_reg <= resp_read_data[13];
+                    state_reg <= STATE_DONE;
+                end
             end
             default: begin
                 state_reg <= STATE_IDLE;

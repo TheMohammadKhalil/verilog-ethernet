@@ -102,6 +102,18 @@ wire enet1_mdio_i;
 wire enet1_mdio_o;
 wire enet1_mdio_t;
 
+wire enet0_gtx_clk_int;
+wire [3:0] enet0_tx_data_int;
+wire enet0_tx_en_int;
+wire enet0_rst_n_int;
+wire enet1_gtx_clk_int;
+wire [3:0] enet1_tx_data_int;
+wire enet1_tx_en_int;
+wire enet1_rst_n_int;
+
+reg [19:0] phy_output_enable_counter_reg = 20'd0;
+reg phy_output_enable_reg = 1'b0;
+
 altpll #(
     .bandwidth_type("AUTO"),
     .clk0_divide_by(2),
@@ -219,8 +231,30 @@ assign HEX5 = HEX_OFF;
 assign HEX6 = HEX_OFF;
 assign HEX7 = HEX_OFF;
 
-assign ENET0_TX_ER = 1'b0;
-assign ENET1_TX_ER = 1'b0;
+always @(posedge clk_int) begin
+    if (rst_int || !enet0_rst_n_int || !enet1_rst_n_int) begin
+        phy_output_enable_counter_reg <= 20'd0;
+        phy_output_enable_reg <= 1'b0;
+    end else if (!phy_output_enable_reg) begin
+        phy_output_enable_counter_reg <= phy_output_enable_counter_reg + 1'b1;
+
+        if (&phy_output_enable_counter_reg) begin
+            phy_output_enable_reg <= 1'b1;
+        end
+    end
+end
+
+assign ENET0_GTX_CLK = phy_output_enable_reg ? enet0_gtx_clk_int : 1'bz;
+assign ENET0_TX_DATA = phy_output_enable_reg ? enet0_tx_data_int : 4'bzzzz;
+assign ENET0_TX_EN = phy_output_enable_reg ? enet0_tx_en_int : 1'bz;
+assign ENET0_TX_ER = phy_output_enable_reg ? 1'b0 : 1'bz;
+assign ENET0_RST_N = enet0_rst_n_int;
+
+assign ENET1_GTX_CLK = phy_output_enable_reg ? enet1_gtx_clk_int : 1'bz;
+assign ENET1_TX_DATA = phy_output_enable_reg ? enet1_tx_data_int : 4'bzzzz;
+assign ENET1_TX_EN = phy_output_enable_reg ? enet1_tx_en_int : 1'bz;
+assign ENET1_TX_ER = phy_output_enable_reg ? 1'b0 : 1'bz;
+assign ENET1_RST_N = enet1_rst_n_int;
 
 assign enet0_mdio_i = ENET0_MDIO;
 assign ENET0_MDIO = enet0_mdio_t ? 1'bz : enet0_mdio_o;
@@ -280,10 +314,10 @@ core_inst (
     .phy0_rx_clk(ENET0_RX_CLK),
     .phy0_rxd(ENET0_RX_DATA),
     .phy0_rx_ctl(ENET0_RX_DV),
-    .phy0_tx_clk(ENET0_GTX_CLK),
-    .phy0_txd(ENET0_TX_DATA),
-    .phy0_tx_ctl(ENET0_TX_EN),
-    .phy0_reset_n(ENET0_RST_N),
+    .phy0_tx_clk(enet0_gtx_clk_int),
+    .phy0_txd(enet0_tx_data_int),
+    .phy0_tx_ctl(enet0_tx_en_int),
+    .phy0_reset_n(enet0_rst_n_int),
     .phy0_mdc(ENET0_MDC),
     .phy0_mdio_i(enet0_mdio_i),
     .phy0_mdio_o(enet0_mdio_o),
@@ -293,10 +327,10 @@ core_inst (
     .phy1_rx_clk(ENET1_RX_CLK),
     .phy1_rxd(ENET1_RX_DATA),
     .phy1_rx_ctl(ENET1_RX_DV),
-    .phy1_tx_clk(ENET1_GTX_CLK),
-    .phy1_txd(ENET1_TX_DATA),
-    .phy1_tx_ctl(ENET1_TX_EN),
-    .phy1_reset_n(ENET1_RST_N),
+    .phy1_tx_clk(enet1_gtx_clk_int),
+    .phy1_txd(enet1_tx_data_int),
+    .phy1_tx_ctl(enet1_tx_en_int),
+    .phy1_reset_n(enet1_rst_n_int),
     .phy1_mdc(ENET1_MDC),
     .phy1_mdio_i(enet1_mdio_i),
     .phy1_mdio_o(enet1_mdio_o),
