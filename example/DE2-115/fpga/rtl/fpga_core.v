@@ -580,21 +580,27 @@ localparam [4:0]
     STATE_WAIT_AN      = 5'd20,
     STATE_DONE         = 5'd21,
     STATE_ISSUE_R17    = 5'd22,
-    STATE_WAIT_R17     = 5'd23;
+    STATE_WAIT_R17     = 5'd23,
+    STATE_ISSUE_R16    = 5'd24,
+    STATE_WAIT_R16     = 5'd25,
+    STATE_ISSUE_W16    = 5'd26,
+    STATE_WAIT_W16     = 5'd27;
 
 localparam [4:0]
     PHY_REG_BMCR       = 5'd0,
     PHY_REG_ANAR       = 5'd4,
     PHY_REG_1000_CTRL  = 5'd9,
+    PHY_REG_SPEC_CTRL  = 5'd16,
     PHY_REG_PHY_STATUS = 5'd17,
     PHY_REG_EXT_CTRL   = 5'd20,
     PHY_REG_EXT_STATUS = 5'd27;
 
-// Marvell 88E1111 setup: RGMII delays, RGMII-to-copper mode, and
+// Marvell 88E1111 setup: RGMII delays, RGMII-to-copper mode, auto-MDIX, and
 // autonegotiation restricted to 1000BASE-T full duplex.
 localparam [15:0]
     PHY_EXT_CTRL_RGMII_DELAYS = 16'h0082,
     PHY_EXT_STATUS_RGMII_MODE = 16'h000b,
+    PHY_SPEC_CTRL_AUTO_MDIX   = 16'h0060,
     PHY_ANAR_1000_ONLY        = 16'h0c01,
     PHY_1000_CTRL_FULL_DUPLEX = 16'h0200,
     PHY_BMCR_RESET            = 16'h8000,
@@ -604,6 +610,7 @@ reg [4:0] state_reg = STATE_IDLE;
 reg [23:0] delay_counter_reg = 24'd0;
 reg [15:0] reg20_reg = 16'd0;
 reg [15:0] reg27_reg = 16'd0;
+reg [15:0] reg16_reg = 16'd0;
 reg [15:0] reg9_reg = 16'd0;
 reg [15:0] phy_status_reg = 16'd0;
 reg done_reg = 1'b0;
@@ -654,6 +661,7 @@ always @(posedge clk) begin
         delay_counter_reg <= 24'd0;
         reg20_reg <= 16'd0;
         reg27_reg <= 16'd0;
+        reg16_reg <= 16'd0;
         reg9_reg <= 16'd0;
         phy_status_reg <= 16'd0;
         done_reg <= 1'b0;
@@ -729,6 +737,35 @@ always @(posedge clk) begin
                 end
             end
             STATE_WAIT_W27: begin
+                if (resp_valid) begin
+                    state_reg <= STATE_ISSUE_R16;
+                end
+            end
+            STATE_ISSUE_R16: begin
+                if (cmd_ready) begin
+                    cmd_valid_reg <= 1'b1;
+                    cmd_read_reg <= 1'b1;
+                    cmd_reg_addr_reg <= PHY_REG_SPEC_CTRL;
+                    cmd_write_data_reg <= 16'd0;
+                    state_reg <= STATE_WAIT_R16;
+                end
+            end
+            STATE_WAIT_R16: begin
+                if (resp_valid) begin
+                    reg16_reg <= (resp_read_data & 16'hff9f) | PHY_SPEC_CTRL_AUTO_MDIX;
+                    state_reg <= STATE_ISSUE_W16;
+                end
+            end
+            STATE_ISSUE_W16: begin
+                if (cmd_ready) begin
+                    cmd_valid_reg <= 1'b1;
+                    cmd_read_reg <= 1'b0;
+                    cmd_reg_addr_reg <= PHY_REG_SPEC_CTRL;
+                    cmd_write_data_reg <= reg16_reg;
+                    state_reg <= STATE_WAIT_W16;
+                end
+            end
+            STATE_WAIT_W16: begin
                 if (resp_valid) begin
                     state_reg <= STATE_ISSUE_RESET;
                 end
