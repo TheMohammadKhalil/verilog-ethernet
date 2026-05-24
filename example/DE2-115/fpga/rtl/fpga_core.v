@@ -109,21 +109,15 @@ wire       tx1_axis_tready;
 wire       tx1_axis_tlast;
 wire       tx1_axis_tuser;
 
+wire fifo_0_to_1_overflow;
+wire fifo_0_to_1_bad_frame;
+wire fifo_0_to_1_good_frame;
+wire fifo_1_to_0_overflow;
+wire fifo_1_to_0_bad_frame;
+wire fifo_1_to_0_good_frame;
+
 wire forward_0_to_1 = rx0_axis_tvalid && rx0_axis_tready && rx0_axis_tlast && !rx0_axis_tuser;
 wire forward_1_to_0 = rx1_axis_tvalid && rx1_axis_tready && rx1_axis_tlast && !rx1_axis_tuser;
-
-// Transparent two-port bridge.  Frames are not parsed, filtered, or rewritten.
-assign tx1_axis_tdata = rx0_axis_tdata;
-assign tx1_axis_tvalid = rx0_axis_tvalid;
-assign rx0_axis_tready = tx1_axis_tready;
-assign tx1_axis_tlast = rx0_axis_tlast;
-assign tx1_axis_tuser = rx0_axis_tuser;
-
-assign tx0_axis_tdata = rx1_axis_tdata;
-assign tx0_axis_tvalid = rx1_axis_tvalid;
-assign rx1_axis_tready = tx0_axis_tready;
-assign tx0_axis_tlast = rx1_axis_tlast;
-assign tx0_axis_tuser = rx1_axis_tuser;
 
 assign phy0_reset_n = ~rst;
 assign phy1_reset_n = ~rst;
@@ -173,6 +167,96 @@ assign hex4 = 7'b1111111;
 assign hex5 = 7'b1111111;
 assign hex6 = 7'b1111111;
 assign hex7 = 7'b1111111;
+
+// Transparent two-port bridge.  Frames are buffered but not parsed, filtered,
+// or rewritten.
+axis_fifo #(
+    .DEPTH(8192),
+    .DATA_WIDTH(8),
+    .KEEP_ENABLE(0),
+    .ID_ENABLE(0),
+    .DEST_ENABLE(0),
+    .USER_ENABLE(1),
+    .USER_WIDTH(1),
+    .FRAME_FIFO(1),
+    .DROP_BAD_FRAME(0),
+    .DROP_WHEN_FULL(0)
+)
+bridge_fifo_0_to_1 (
+    .clk(clk),
+    .rst(rst),
+
+    .s_axis_tdata(rx0_axis_tdata),
+    .s_axis_tkeep(1'b1),
+    .s_axis_tvalid(rx0_axis_tvalid),
+    .s_axis_tready(rx0_axis_tready),
+    .s_axis_tlast(rx0_axis_tlast),
+    .s_axis_tid(8'd0),
+    .s_axis_tdest(8'd0),
+    .s_axis_tuser(rx0_axis_tuser),
+
+    .m_axis_tdata(tx1_axis_tdata),
+    .m_axis_tkeep(),
+    .m_axis_tvalid(tx1_axis_tvalid),
+    .m_axis_tready(tx1_axis_tready),
+    .m_axis_tlast(tx1_axis_tlast),
+    .m_axis_tid(),
+    .m_axis_tdest(),
+    .m_axis_tuser(tx1_axis_tuser),
+
+    .pause_req(1'b0),
+    .pause_ack(),
+
+    .status_depth(),
+    .status_depth_commit(),
+    .status_overflow(fifo_0_to_1_overflow),
+    .status_bad_frame(fifo_0_to_1_bad_frame),
+    .status_good_frame(fifo_0_to_1_good_frame)
+);
+
+axis_fifo #(
+    .DEPTH(8192),
+    .DATA_WIDTH(8),
+    .KEEP_ENABLE(0),
+    .ID_ENABLE(0),
+    .DEST_ENABLE(0),
+    .USER_ENABLE(1),
+    .USER_WIDTH(1),
+    .FRAME_FIFO(1),
+    .DROP_BAD_FRAME(0),
+    .DROP_WHEN_FULL(0)
+)
+bridge_fifo_1_to_0 (
+    .clk(clk),
+    .rst(rst),
+
+    .s_axis_tdata(rx1_axis_tdata),
+    .s_axis_tkeep(1'b1),
+    .s_axis_tvalid(rx1_axis_tvalid),
+    .s_axis_tready(rx1_axis_tready),
+    .s_axis_tlast(rx1_axis_tlast),
+    .s_axis_tid(8'd0),
+    .s_axis_tdest(8'd0),
+    .s_axis_tuser(rx1_axis_tuser),
+
+    .m_axis_tdata(tx0_axis_tdata),
+    .m_axis_tkeep(),
+    .m_axis_tvalid(tx0_axis_tvalid),
+    .m_axis_tready(tx0_axis_tready),
+    .m_axis_tlast(tx0_axis_tlast),
+    .m_axis_tid(),
+    .m_axis_tdest(),
+    .m_axis_tuser(tx0_axis_tuser),
+
+    .pause_req(1'b0),
+    .pause_ack(),
+
+    .status_depth(),
+    .status_depth_commit(),
+    .status_overflow(fifo_1_to_0_overflow),
+    .status_bad_frame(fifo_1_to_0_bad_frame),
+    .status_good_frame(fifo_1_to_0_good_frame)
+);
 
 eth_mac_1g_rgmii_fifo #(
     .TARGET(TARGET),
