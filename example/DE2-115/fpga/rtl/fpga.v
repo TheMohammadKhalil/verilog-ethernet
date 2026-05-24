@@ -95,6 +95,13 @@ wire pll_locked;
 
 wire clk90_int;
 
+wire enet0_mdio_i;
+wire enet0_mdio_o;
+wire enet0_mdio_t;
+wire enet1_mdio_i;
+wire enet1_mdio_o;
+wire enet1_mdio_t;
+
 altpll #(
     .bandwidth_type("AUTO"),
     .clk0_divide_by(2),
@@ -215,10 +222,10 @@ assign HEX7 = HEX_OFF;
 assign ENET0_TX_ER = 1'b0;
 assign ENET1_TX_ER = 1'b0;
 
-assign ENET0_MDC = 1'b0;
-assign ENET1_MDC = 1'b0;
-assign ENET0_MDIO = 1'bz;
-assign ENET1_MDIO = 1'bz;
+assign enet0_mdio_i = ENET0_MDIO;
+assign ENET0_MDIO = enet0_mdio_t ? 1'bz : enet0_mdio_o;
+assign enet1_mdio_i = ENET1_MDIO;
+assign ENET1_MDIO = enet1_mdio_t ? 1'bz : enet1_mdio_o;
 
 // GPIO
 wire [3:0] btn_int;
@@ -277,6 +284,10 @@ core_inst (
     .phy0_txd(ENET0_TX_DATA),
     .phy0_tx_ctl(ENET0_TX_EN),
     .phy0_reset_n(ENET0_RST_N),
+    .phy0_mdc(ENET0_MDC),
+    .phy0_mdio_i(enet0_mdio_i),
+    .phy0_mdio_o(enet0_mdio_o),
+    .phy0_mdio_t(enet0_mdio_t),
     .phy0_int_n(ENET0_INT_N),
 
     .phy1_rx_clk(ENET1_RX_CLK),
@@ -286,6 +297,10 @@ core_inst (
     .phy1_txd(ENET1_TX_DATA),
     .phy1_tx_ctl(ENET1_TX_EN),
     .phy1_reset_n(ENET1_RST_N),
+    .phy1_mdc(ENET1_MDC),
+    .phy1_mdio_i(enet1_mdio_i),
+    .phy1_mdio_o(enet1_mdio_o),
+    .phy1_mdio_t(enet1_mdio_t),
     .phy1_int_n(ENET1_INT_N)
 );
 
