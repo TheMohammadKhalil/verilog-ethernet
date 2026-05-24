@@ -148,6 +148,7 @@ wire [1:0] mac1_speed;
 
 wire phy0_config_done;
 wire phy1_config_done;
+wire phy_config_done = phy0_config_done && phy1_config_done;
 wire phy0_config_busy;
 wire phy1_config_busy;
 wire phy0_link_up;
@@ -171,7 +172,7 @@ wire tx1_frame = tx1_axis_tvalid && tx1_axis_tready && tx1_axis_tlast;
 reg [23:0] phy_reset_counter_reg = 24'd0;
 reg phy_reset_n_reg = 1'b0;
 
-wire mac_rst = rst || !phy_reset_n_reg || !phy_link_ready;
+wire mac_rst = rst || !phy_reset_n_reg || !phy_config_done;
 
 always @(posedge clk) begin
     if (rst) begin
@@ -584,7 +585,9 @@ localparam [4:0]
     STATE_ISSUE_R16    = 5'd24,
     STATE_WAIT_R16     = 5'd25,
     STATE_ISSUE_W16    = 5'd26,
-    STATE_WAIT_W16     = 5'd27;
+    STATE_WAIT_W16     = 5'd27,
+    STATE_ISSUE_R0     = 5'd28,
+    STATE_WAIT_R0      = 5'd29;
 
 localparam [4:0]
     PHY_REG_BMCR       = 5'd0,
@@ -791,7 +794,26 @@ always @(posedge clk) begin
 
                 if (delay_counter_reg >= POST_RESET_DELAY) begin
                     delay_counter_reg <= 24'd0;
-                    state_reg <= STATE_ISSUE_W4;
+                    state_reg <= STATE_ISSUE_R0;
+                end
+            end
+            STATE_ISSUE_R0: begin
+                if (cmd_ready) begin
+                    cmd_valid_reg <= 1'b1;
+                    cmd_read_reg <= 1'b1;
+                    cmd_reg_addr_reg <= PHY_REG_BMCR;
+                    cmd_write_data_reg <= 16'd0;
+                    state_reg <= STATE_WAIT_R0;
+                end
+            end
+            STATE_WAIT_R0: begin
+                if (resp_valid) begin
+                    delay_counter_reg <= 24'd0;
+                    if (resp_read_data[15]) begin
+                        state_reg <= STATE_WAIT_2;
+                    end else begin
+                        state_reg <= STATE_ISSUE_W4;
+                    end
                 end
             end
             STATE_ISSUE_W4: begin
