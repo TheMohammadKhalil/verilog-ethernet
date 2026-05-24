@@ -119,8 +119,26 @@ wire fifo_1_to_0_good_frame;
 wire forward_0_to_1 = rx0_axis_tvalid && rx0_axis_tready && rx0_axis_tlast && !rx0_axis_tuser;
 wire forward_1_to_0 = rx1_axis_tvalid && rx1_axis_tready && rx1_axis_tlast && !rx1_axis_tuser;
 
-assign phy0_reset_n = ~rst;
-assign phy1_reset_n = ~rst;
+reg [23:0] phy_reset_counter_reg = 24'd0;
+reg phy_reset_n_reg = 1'b0;
+
+wire mac_rst = rst || !phy_reset_n_reg;
+
+always @(posedge clk) begin
+    if (rst) begin
+        phy_reset_counter_reg <= 24'd0;
+        phy_reset_n_reg <= 1'b0;
+    end else if (!phy_reset_n_reg) begin
+        phy_reset_counter_reg <= phy_reset_counter_reg + 1'b1;
+
+        if (&phy_reset_counter_reg) begin
+            phy_reset_n_reg <= 1'b1;
+        end
+    end
+end
+
+assign phy0_reset_n = phy_reset_n_reg;
+assign phy1_reset_n = phy_reset_n_reg;
 
 assign gpio = 36'd0;
 assign ledr = sw;
@@ -130,7 +148,7 @@ reg [31:0] forward_count_0_to_1_reg = 32'd0;
 reg [31:0] forward_count_1_to_0_reg = 32'd0;
 
 always @(posedge clk) begin
-    if (rst) begin
+    if (mac_rst) begin
         heartbeat_counter_reg <= 26'd0;
         forward_count_0_to_1_reg <= 32'd0;
         forward_count_1_to_0_reg <= 32'd0;
@@ -184,7 +202,7 @@ axis_fifo #(
 )
 bridge_fifo_0_to_1 (
     .clk(clk),
-    .rst(rst),
+    .rst(mac_rst),
 
     .s_axis_tdata(rx0_axis_tdata),
     .s_axis_tkeep(1'b1),
@@ -228,7 +246,7 @@ axis_fifo #(
 )
 bridge_fifo_1_to_0 (
     .clk(clk),
-    .rst(rst),
+    .rst(mac_rst),
 
     .s_axis_tdata(rx1_axis_tdata),
     .s_axis_tkeep(1'b1),
@@ -271,9 +289,9 @@ eth_mac_1g_rgmii_fifo #(
 eth_mac_inst (
     .gtx_clk(clk),
     .gtx_clk90(clk90),
-    .gtx_rst(rst),
+    .gtx_rst(mac_rst),
     .logic_clk(clk),
-    .logic_rst(rst),
+    .logic_rst(mac_rst),
 
     .tx_axis_tdata(tx0_axis_tdata),
     .tx_axis_tkeep(1'b1),
@@ -325,9 +343,9 @@ eth_mac_1g_rgmii_fifo #(
 eth_mac_1_inst (
     .gtx_clk(clk),
     .gtx_clk90(clk90),
-    .gtx_rst(rst),
+    .gtx_rst(mac_rst),
     .logic_clk(clk),
-    .logic_rst(rst),
+    .logic_rst(mac_rst),
 
     .tx_axis_tdata(tx1_axis_tdata),
     .tx_axis_tkeep(1'b1),

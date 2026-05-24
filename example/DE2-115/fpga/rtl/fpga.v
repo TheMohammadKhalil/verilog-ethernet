@@ -195,6 +195,15 @@ sync_reset_inst (
     .out(rst_int)
 );
 
+assign HEX0 = 7'b1111111;
+assign HEX1 = 7'b1111111;
+assign HEX2 = 7'b1111111;
+assign HEX3 = 7'b1111111;
+assign HEX4 = 7'b1111111;
+assign HEX5 = 7'b1111111;
+assign HEX6 = 7'b1111111;
+assign HEX7 = 7'b1111111;
+
 // GPIO
 wire [3:0] btn_int;
 wire [17:0] sw_int;
@@ -232,14 +241,14 @@ core_inst (
     .sw(sw_int),
     .ledg(LEDG),
     .ledr(LEDR),
-    .hex0(HEX0),
-    .hex1(HEX1),
-    .hex2(HEX2),
-    .hex3(HEX3),
-    .hex4(HEX4),
-    .hex5(HEX5),
-    .hex6(HEX6),
-    .hex7(HEX7),
+    .hex0(),
+    .hex1(),
+    .hex2(),
+    .hex3(),
+    .hex4(),
+    .hex5(),
+    .hex6(),
+    .hex7(),
     .gpio(GPIO),
 
     /*
