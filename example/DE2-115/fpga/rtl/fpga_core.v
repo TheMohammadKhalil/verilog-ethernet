@@ -602,7 +602,7 @@ localparam [15:0]
     PHY_EXT_STATUS_RGMII_MODE = 16'h000b,
     PHY_SPEC_CTRL_AUTO_MDIX   = 16'h0060,
     PHY_ANAR_1000_ONLY        = 16'h0c01,
-    PHY_1000_CTRL_FULL_DUPLEX = 16'h0200,
+    PHY_1000_CTRL_AUTO_1000FD = 16'h0200,
     PHY_BMCR_RESET            = 16'h8000,
     PHY_BMCR_RESTART_1000FD   = 16'h1340;
 
@@ -819,7 +819,7 @@ always @(posedge clk) begin
             end
             STATE_WAIT_R9: begin
                 if (resp_valid) begin
-                    reg9_reg <= (resp_read_data & 16'hfcff) | PHY_1000_CTRL_FULL_DUPLEX;
+                    reg9_reg <= PHY_1000_CTRL_AUTO_1000FD;
                     state_reg <= STATE_ISSUE_W9;
                 end
             end
