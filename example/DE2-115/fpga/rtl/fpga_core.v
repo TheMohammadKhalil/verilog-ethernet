@@ -83,6 +83,8 @@ module fpga_core #
     input  wire       phy1_int_n
 );
 
+localparam [6:0] HEX_OFF = 7'b1111111;
+
 // MAC 0 AXI stream interfaces
 wire [7:0] rx0_axis_tdata;
 wire       rx0_axis_tvalid;
@@ -177,14 +179,14 @@ assign ledg = {
     forward_count_0_to_1_reg[0]
 };
 
-assign hex0 = 7'b1111111;
-assign hex1 = 7'b1111111;
-assign hex2 = 7'b1111111;
-assign hex3 = 7'b1111111;
-assign hex4 = 7'b1111111;
-assign hex5 = 7'b1111111;
-assign hex6 = 7'b1111111;
-assign hex7 = 7'b1111111;
+assign hex0 = HEX_OFF;
+assign hex1 = HEX_OFF;
+assign hex2 = HEX_OFF;
+assign hex3 = HEX_OFF;
+assign hex4 = HEX_OFF;
+assign hex5 = HEX_OFF;
+assign hex6 = HEX_OFF;
+assign hex7 = HEX_OFF;
 
 // Transparent two-port bridge.  Frames are buffered but not parsed, filtered,
 // or rewritten.

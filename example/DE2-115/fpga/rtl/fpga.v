@@ -76,6 +76,8 @@ module fpga (
     input  wire        ENET1_INT_N
 );
 
+localparam [6:0] HEX_OFF = 7'b1111111;
+
 // Clock and reset
 
 // Internal 125 MHz clock
@@ -195,14 +197,14 @@ sync_reset_inst (
     .out(rst_int)
 );
 
-assign HEX0 = 7'b1111111;
-assign HEX1 = 7'b1111111;
-assign HEX2 = 7'b1111111;
-assign HEX3 = 7'b1111111;
-assign HEX4 = 7'b1111111;
-assign HEX5 = 7'b1111111;
-assign HEX6 = 7'b1111111;
-assign HEX7 = 7'b1111111;
+assign HEX0 = HEX_OFF;
+assign HEX1 = HEX_OFF;
+assign HEX2 = HEX_OFF;
+assign HEX3 = HEX_OFF;
+assign HEX4 = HEX_OFF;
+assign HEX5 = HEX_OFF;
+assign HEX6 = HEX_OFF;
+assign HEX7 = HEX_OFF;
 
 // GPIO
 wire [3:0] btn_int;
