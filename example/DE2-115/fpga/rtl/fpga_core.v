@@ -598,10 +598,10 @@ localparam [4:0]
     PHY_REG_EXT_CTRL   = 5'd20,
     PHY_REG_EXT_STATUS = 5'd27;
 
-// Marvell 88E1111 setup: RGMII delays, RGMII-to-copper mode, auto-MDIX, and
+// Marvell 88E1111 setup: RGMII RX delay, RGMII-to-copper mode, auto-MDIX, and
 // autonegotiation restricted to 1000BASE-T full duplex.
 localparam [15:0]
-    PHY_EXT_CTRL_RGMII_DELAYS = 16'h0082,
+    PHY_EXT_CTRL_RGMII_DELAYS = 16'h0080,
     PHY_EXT_STATUS_RGMII_MODE = 16'h000b,
     PHY_SPEC_CTRL_AUTO_MDIX   = 16'h0060,
     PHY_ANAR_1000_ONLY        = 16'h0c01,
