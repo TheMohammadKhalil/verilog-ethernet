@@ -244,13 +244,13 @@ always @(posedge clk_int) begin
     end
 end
 
-assign ENET0_GTX_CLK = clk90_int;
+assign ENET0_GTX_CLK = enet0_gtx_clk_int;
 assign ENET0_TX_DATA = phy_output_enable_reg ? enet0_tx_data_int : 4'bzzzz;
 assign ENET0_TX_EN = phy_output_enable_reg ? enet0_tx_en_int : 1'bz;
 assign ENET0_TX_ER = phy_output_enable_reg ? 1'b0 : 1'bz;
 assign ENET0_RST_N = enet0_rst_n_int;
 
-assign ENET1_GTX_CLK = clk90_int;
+assign ENET1_GTX_CLK = enet1_gtx_clk_int;
 assign ENET1_TX_DATA = phy_output_enable_reg ? enet1_tx_data_int : 4'bzzzz;
 assign ENET1_TX_EN = phy_output_enable_reg ? enet1_tx_en_int : 1'bz;
 assign ENET1_TX_ER = phy_output_enable_reg ? 1'b0 : 1'bz;

@@ -157,8 +157,10 @@ wire phy0_link_1g;
 wire phy1_link_1g;
 wire phy0_full_duplex;
 wire phy1_full_duplex;
-wire phy0_link_ready = phy0_config_done && phy0_link_up && phy0_link_1g && phy0_full_duplex;
-wire phy1_link_ready = phy1_config_done && phy1_link_up && phy1_link_1g && phy1_full_duplex;
+wire phy0_link_live = phy0_config_done && phy0_link_up && phy0_full_duplex;
+wire phy1_link_live = phy1_config_done && phy1_link_up && phy1_full_duplex;
+wire phy0_link_ready = phy0_link_live && phy0_link_1g;
+wire phy1_link_ready = phy1_link_live && phy1_link_1g;
 wire phy_link_ready = phy0_link_ready && phy1_link_ready;
 
 wire forward_0_to_1 = rx0_axis_tvalid && rx0_axis_tready && rx0_axis_tlast && !rx0_axis_tuser;
@@ -295,8 +297,8 @@ end
 
 assign ledg = {
     !mac_rst,
-    phy1_link_ready,
-    phy0_link_ready,
+    phy1_link_live,
+    phy0_link_live,
     mac0_rx_error_bad_frame || mac0_rx_error_bad_fcs || mac1_rx_error_bad_frame || mac1_rx_error_bad_fcs,
     tx1_activity_timer_reg != 0,
     tx0_activity_timer_reg != 0,
@@ -598,16 +600,16 @@ localparam [4:0]
     PHY_REG_EXT_CTRL   = 5'd20,
     PHY_REG_EXT_STATUS = 5'd27;
 
-// Marvell 88E1111 setup: RGMII RX delay, RGMII-to-copper mode, auto-MDIX, and
-// autonegotiation restricted to 1000BASE-T full duplex.
+// Marvell 88E1111 setup: RGMII delays, RGMII-to-copper mode, auto-MDIX, and
+// full-duplex autonegotiation.  A gigabit partner will resolve to 1000BASE-T.
 localparam [15:0]
-    PHY_EXT_CTRL_RGMII_DELAYS = 16'h0080,
+    PHY_EXT_CTRL_RGMII_DELAYS = 16'h0082,
     PHY_EXT_STATUS_RGMII_MODE = 16'h000b,
     PHY_SPEC_CTRL_AUTO_MDIX   = 16'h0060,
-    PHY_ANAR_1000_ONLY        = 16'h0c01,
-    PHY_1000_CTRL_AUTO_1000FD = 16'h0200,
+    PHY_ANAR_FULL_DUPLEX      = 16'h0d41,
+    PHY_1000_CTRL_ADV_1000FD  = 16'h0600,
     PHY_BMCR_RESET            = 16'h8000,
-    PHY_BMCR_RESTART_1000FD   = 16'h1340;
+    PHY_BMCR_RESTART_AN       = 16'h1200;
 
 reg [4:0] state_reg = STATE_IDLE;
 reg [23:0] delay_counter_reg = 24'd0;
@@ -821,7 +823,7 @@ always @(posedge clk) begin
                     cmd_valid_reg <= 1'b1;
                     cmd_read_reg <= 1'b0;
                     cmd_reg_addr_reg <= PHY_REG_ANAR;
-                    cmd_write_data_reg <= PHY_ANAR_1000_ONLY;
+                    cmd_write_data_reg <= PHY_ANAR_FULL_DUPLEX;
                     state_reg <= STATE_WAIT_W4;
                 end
             end
@@ -841,7 +843,7 @@ always @(posedge clk) begin
             end
             STATE_WAIT_R9: begin
                 if (resp_valid) begin
-                    reg9_reg <= PHY_1000_CTRL_AUTO_1000FD;
+                    reg9_reg <= PHY_1000_CTRL_ADV_1000FD;
                     state_reg <= STATE_ISSUE_W9;
                 end
             end
@@ -864,7 +866,7 @@ always @(posedge clk) begin
                     cmd_valid_reg <= 1'b1;
                     cmd_read_reg <= 1'b0;
                     cmd_reg_addr_reg <= PHY_REG_BMCR;
-                    cmd_write_data_reg <= PHY_BMCR_RESTART_1000FD;
+                    cmd_write_data_reg <= PHY_BMCR_RESTART_AN;
                     state_reg <= STATE_WAIT_AN;
                 end
             end
