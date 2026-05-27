@@ -573,50 +573,29 @@ localparam [4:0]
     STATE_ISSUE_RESET  = 5'd10,
     STATE_WAIT_RESET   = 5'd11,
     STATE_WAIT_2       = 5'd12,
-    STATE_ISSUE_W4     = 5'd13,
-    STATE_WAIT_W4      = 5'd14,
-    STATE_ISSUE_R9     = 5'd15,
-    STATE_WAIT_R9      = 5'd16,
-    STATE_ISSUE_W9     = 5'd17,
-    STATE_WAIT_W9      = 5'd18,
-    STATE_ISSUE_AN     = 5'd19,
-    STATE_WAIT_AN      = 5'd20,
-    STATE_DONE         = 5'd21,
-    STATE_ISSUE_R17    = 5'd22,
-    STATE_WAIT_R17     = 5'd23,
-    STATE_ISSUE_R16    = 5'd24,
-    STATE_WAIT_R16     = 5'd25,
-    STATE_ISSUE_W16    = 5'd26,
-    STATE_WAIT_W16     = 5'd27,
-    STATE_ISSUE_R0     = 5'd28,
-    STATE_WAIT_R0      = 5'd29;
+    STATE_ISSUE_R0     = 5'd13,
+    STATE_WAIT_R0      = 5'd14,
+    STATE_DONE         = 5'd15,
+    STATE_ISSUE_R17    = 5'd16,
+    STATE_WAIT_R17     = 5'd17;
 
 localparam [4:0]
     PHY_REG_BMCR       = 5'd0,
-    PHY_REG_ANAR       = 5'd4,
-    PHY_REG_1000_CTRL  = 5'd9,
-    PHY_REG_SPEC_CTRL  = 5'd16,
     PHY_REG_PHY_STATUS = 5'd17,
     PHY_REG_EXT_CTRL   = 5'd20,
     PHY_REG_EXT_STATUS = 5'd27;
 
-// Marvell 88E1111 setup: RGMII delays, RGMII-to-copper mode, auto-MDIX, and
-// full-duplex autonegotiation.  A gigabit partner will resolve to 1000BASE-T.
+// Marvell 88E1111 setup: configure only the FPGA-facing RGMII mode/timing.
+// Leave copper-side autonegotiation at the DE2-115 strap defaults.
 localparam [15:0]
     PHY_EXT_CTRL_RGMII_DELAYS = 16'h0082,
     PHY_EXT_STATUS_RGMII_MODE = 16'h000b,
-    PHY_SPEC_CTRL_AUTO_MDIX   = 16'h0060,
-    PHY_ANAR_FULL_DUPLEX      = 16'h0d41,
-    PHY_1000_CTRL_ADV_1000FD  = 16'h0600,
-    PHY_BMCR_RESET            = 16'h8000,
-    PHY_BMCR_RESTART_AN       = 16'h1200;
+    PHY_BMCR_RESET            = 16'h8000;
 
 reg [4:0] state_reg = STATE_IDLE;
 reg [23:0] delay_counter_reg = 24'd0;
 reg [15:0] reg20_reg = 16'd0;
 reg [15:0] reg27_reg = 16'd0;
-reg [15:0] reg16_reg = 16'd0;
-reg [15:0] reg9_reg = 16'd0;
 reg [15:0] phy_status_reg = 16'd0;
 reg done_reg = 1'b0;
 reg link_up_reg = 1'b0;
@@ -666,8 +645,6 @@ always @(posedge clk) begin
         delay_counter_reg <= 24'd0;
         reg20_reg <= 16'd0;
         reg27_reg <= 16'd0;
-        reg16_reg <= 16'd0;
-        reg9_reg <= 16'd0;
         phy_status_reg <= 16'd0;
         done_reg <= 1'b0;
         link_up_reg <= 1'b0;
@@ -743,35 +720,6 @@ always @(posedge clk) begin
             end
             STATE_WAIT_W27: begin
                 if (resp_valid) begin
-                    state_reg <= STATE_ISSUE_R16;
-                end
-            end
-            STATE_ISSUE_R16: begin
-                if (cmd_ready) begin
-                    cmd_valid_reg <= 1'b1;
-                    cmd_read_reg <= 1'b1;
-                    cmd_reg_addr_reg <= PHY_REG_SPEC_CTRL;
-                    cmd_write_data_reg <= 16'd0;
-                    state_reg <= STATE_WAIT_R16;
-                end
-            end
-            STATE_WAIT_R16: begin
-                if (resp_valid) begin
-                    reg16_reg <= (resp_read_data & 16'hff9f) | PHY_SPEC_CTRL_AUTO_MDIX;
-                    state_reg <= STATE_ISSUE_W16;
-                end
-            end
-            STATE_ISSUE_W16: begin
-                if (cmd_ready) begin
-                    cmd_valid_reg <= 1'b1;
-                    cmd_read_reg <= 1'b0;
-                    cmd_reg_addr_reg <= PHY_REG_SPEC_CTRL;
-                    cmd_write_data_reg <= reg16_reg;
-                    state_reg <= STATE_WAIT_W16;
-                end
-            end
-            STATE_WAIT_W16: begin
-                if (resp_valid) begin
                     state_reg <= STATE_ISSUE_RESET;
                 end
             end
@@ -814,65 +762,8 @@ always @(posedge clk) begin
                     if (resp_read_data[15]) begin
                         state_reg <= STATE_WAIT_2;
                     end else begin
-                        state_reg <= STATE_ISSUE_W4;
+                        state_reg <= STATE_DONE;
                     end
-                end
-            end
-            STATE_ISSUE_W4: begin
-                if (cmd_ready) begin
-                    cmd_valid_reg <= 1'b1;
-                    cmd_read_reg <= 1'b0;
-                    cmd_reg_addr_reg <= PHY_REG_ANAR;
-                    cmd_write_data_reg <= PHY_ANAR_FULL_DUPLEX;
-                    state_reg <= STATE_WAIT_W4;
-                end
-            end
-            STATE_WAIT_W4: begin
-                if (resp_valid) begin
-                    state_reg <= STATE_ISSUE_R9;
-                end
-            end
-            STATE_ISSUE_R9: begin
-                if (cmd_ready) begin
-                    cmd_valid_reg <= 1'b1;
-                    cmd_read_reg <= 1'b1;
-                    cmd_reg_addr_reg <= PHY_REG_1000_CTRL;
-                    cmd_write_data_reg <= 16'd0;
-                    state_reg <= STATE_WAIT_R9;
-                end
-            end
-            STATE_WAIT_R9: begin
-                if (resp_valid) begin
-                    reg9_reg <= PHY_1000_CTRL_ADV_1000FD;
-                    state_reg <= STATE_ISSUE_W9;
-                end
-            end
-            STATE_ISSUE_W9: begin
-                if (cmd_ready) begin
-                    cmd_valid_reg <= 1'b1;
-                    cmd_read_reg <= 1'b0;
-                    cmd_reg_addr_reg <= PHY_REG_1000_CTRL;
-                    cmd_write_data_reg <= reg9_reg;
-                    state_reg <= STATE_WAIT_W9;
-                end
-            end
-            STATE_WAIT_W9: begin
-                if (resp_valid) begin
-                    state_reg <= STATE_ISSUE_AN;
-                end
-            end
-            STATE_ISSUE_AN: begin
-                if (cmd_ready) begin
-                    cmd_valid_reg <= 1'b1;
-                    cmd_read_reg <= 1'b0;
-                    cmd_reg_addr_reg <= PHY_REG_BMCR;
-                    cmd_write_data_reg <= PHY_BMCR_RESTART_AN;
-                    state_reg <= STATE_WAIT_AN;
-                end
-            end
-            STATE_WAIT_AN: begin
-                if (resp_valid) begin
-                    state_reg <= STATE_DONE;
                 end
             end
             STATE_DONE: begin
@@ -896,7 +787,7 @@ always @(posedge clk) begin
             STATE_WAIT_R17: begin
                 if (resp_valid) begin
                     phy_status_reg <= resp_read_data;
-                    link_up_reg <= resp_read_data[10] && resp_read_data[11];
+                    link_up_reg <= resp_read_data[10];
                     link_1g_reg <= resp_read_data[15:14] == 2'b10;
                     full_duplex_reg <= resp_read_data[13];
                     state_reg <= STATE_DONE;
