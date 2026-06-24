@@ -119,41 +119,36 @@ wire       tx1_axis_tready;
 wire       tx1_axis_tlast;
 wire       tx1_axis_tuser;
 
-wire [7:0]  bridge_0_to_1_axis_tdata;
-wire        bridge_0_to_1_axis_tvalid;
-wire        bridge_0_to_1_axis_tready;
-wire        bridge_0_to_1_axis_tlast;
-wire        bridge_0_to_1_axis_tuser;
-wire        bridge_0_to_1_error_header_early_termination;
+// Ethernet frame interfaces, MAC 0 RX to MAC 1 TX
+wire        rx0_eth_hdr_valid;
+wire        rx0_eth_hdr_ready;
+wire [47:0] rx0_eth_dest_mac;
+wire [47:0] rx0_eth_src_mac;
+wire [15:0] rx0_eth_type;
+wire [7:0]  rx0_eth_payload_axis_tdata;
+wire        rx0_eth_payload_axis_tkeep;
+wire        rx0_eth_payload_axis_tvalid;
+wire        rx0_eth_payload_axis_tready;
+wire        rx0_eth_payload_axis_tlast;
+wire        rx0_eth_payload_axis_tuser;
+wire        rx0_eth_error_header_early_termination;
 
-wire [7:0]  processed_0_to_1_axis_tdata;
-wire        processed_0_to_1_axis_tvalid;
-wire        processed_0_to_1_axis_tready;
-wire        processed_0_to_1_axis_tlast;
-wire        processed_0_to_1_axis_tuser;
+// Ethernet frame interfaces, MAC 1 RX to MAC 0 TX
+wire        rx1_eth_hdr_valid;
+wire        rx1_eth_hdr_ready;
+wire [47:0] rx1_eth_dest_mac;
+wire [47:0] rx1_eth_src_mac;
+wire [15:0] rx1_eth_type;
+wire [7:0]  rx1_eth_payload_axis_tdata;
+wire        rx1_eth_payload_axis_tkeep;
+wire        rx1_eth_payload_axis_tvalid;
+wire        rx1_eth_payload_axis_tready;
+wire        rx1_eth_payload_axis_tlast;
+wire        rx1_eth_payload_axis_tuser;
+wire        rx1_eth_error_header_early_termination;
 
-wire [7:0]  bridge_1_to_0_axis_tdata;
-wire        bridge_1_to_0_axis_tvalid;
-wire        bridge_1_to_0_axis_tready;
-wire        bridge_1_to_0_axis_tlast;
-wire        bridge_1_to_0_axis_tuser;
-wire        bridge_1_to_0_error_header_early_termination;
-
-wire [7:0]  processed_1_to_0_axis_tdata;
-wire        processed_1_to_0_axis_tvalid;
-wire        processed_1_to_0_axis_tready;
-wire        processed_1_to_0_axis_tlast;
-wire        processed_1_to_0_axis_tuser;
-
-wire [15:0] packet_load_status_0_to_1;
-wire [15:0] packet_load_status_1_to_0;
-
-wire fifo_0_to_1_overflow;
-wire fifo_0_to_1_bad_frame;
-wire fifo_0_to_1_good_frame;
-wire fifo_1_to_0_overflow;
-wire fifo_1_to_0_bad_frame;
-wire fifo_1_to_0_good_frame;
+wire fifo_0_to_1_overflow = 1'b0;
+wire fifo_1_to_0_overflow = 1'b0;
 
 wire mac0_rx_error_bad_frame;
 wire mac0_rx_error_bad_fcs;
@@ -192,15 +187,12 @@ wire phy0_link_ready = phy0_link_live && phy0_link_1g;
 wire phy1_link_ready = phy1_link_live && phy1_link_1g;
 wire phy_link_ready = phy0_link_ready && phy1_link_ready;
 
-wire bridge_0_to_1_frame = bridge_0_to_1_axis_tvalid && bridge_0_to_1_axis_tready && bridge_0_to_1_axis_tlast;
-wire bridge_1_to_0_frame = bridge_1_to_0_axis_tvalid && bridge_1_to_0_axis_tready && bridge_1_to_0_axis_tlast;
-wire forward_0_to_1 = bridge_0_to_1_frame && !bridge_0_to_1_axis_tuser;
-wire forward_1_to_0 = bridge_1_to_0_frame && !bridge_1_to_0_axis_tuser;
-
 wire rx0_frame = rx0_axis_tvalid && rx0_axis_tready && rx0_axis_tlast;
 wire rx1_frame = rx1_axis_tvalid && rx1_axis_tready && rx1_axis_tlast;
 wire tx0_frame = tx0_axis_tvalid && tx0_axis_tready && tx0_axis_tlast;
 wire tx1_frame = tx1_axis_tvalid && tx1_axis_tready && tx1_axis_tlast;
+wire forward_0_to_1 = rx0_frame && !rx0_axis_tuser;
+wire forward_1_to_0 = rx1_frame && !rx1_axis_tuser;
 
 reg [23:0] phy_reset_counter_reg = 24'd0;
 reg phy_reset_n_reg = 1'b0;
@@ -223,7 +215,7 @@ end
 assign phy0_reset_n = phy_reset_n_reg;
 assign phy1_reset_n = phy_reset_n_reg;
 
-assign gpio = {4'd0, packet_load_status_1_to_0, packet_load_status_0_to_1};
+assign gpio = 36'd0;
 
 mdio_phy_config #(
     .PHY_ADDR(5'b10000)
@@ -331,7 +323,7 @@ assign ledg = {
     phy1_link_live,
     phy0_link_live,
     mac0_rx_error_bad_frame || mac0_rx_error_bad_fcs || mac1_rx_error_bad_frame || mac1_rx_error_bad_fcs ||
-        bridge_0_to_1_error_header_early_termination || bridge_1_to_0_error_header_early_termination,
+        rx0_eth_error_header_early_termination || rx1_eth_error_header_early_termination,
     tx1_activity_timer_reg != 0,
     tx0_activity_timer_reg != 0,
     rx1_activity_timer_reg != 0,
@@ -369,182 +361,116 @@ assign hex5 = HEX_OFF;
 assign hex6 = HEX_OFF;
 assign hex7 = HEX_OFF;
 
-// Transparent two-port bridge.  Each received frame is decoded into Ethernet
-// header fields plus payload, then rebuilt unchanged before it enters the
-// existing forwarding FIFOs.  The MACs still remove/check the receive FCS and
-// generate a new transmit FCS.
-de2_eth_frame_rebuild_8
-frame_rebuild_0_to_1_inst (
+// Transparent two-port bridge.  eth_axis_rx strips the Ethernet header into
+// fields, and eth_axis_tx rebuilds the frame for the opposite MAC.
+eth_axis_rx
+eth_axis_rx_0_inst (
     .clk(clk),
     .rst(mac_rst),
 
     .s_axis_tdata(rx0_axis_tdata),
+    .s_axis_tkeep(1'b1),
     .s_axis_tvalid(rx0_axis_tvalid),
     .s_axis_tready(rx0_axis_tready),
     .s_axis_tlast(rx0_axis_tlast),
     .s_axis_tuser(rx0_axis_tuser),
 
-    .m_axis_tdata(bridge_0_to_1_axis_tdata),
-    .m_axis_tvalid(bridge_0_to_1_axis_tvalid),
-    .m_axis_tready(bridge_0_to_1_axis_tready),
-    .m_axis_tlast(bridge_0_to_1_axis_tlast),
-    .m_axis_tuser(bridge_0_to_1_axis_tuser),
+    .m_eth_hdr_valid(rx0_eth_hdr_valid),
+    .m_eth_hdr_ready(rx0_eth_hdr_ready),
+    .m_eth_dest_mac(rx0_eth_dest_mac),
+    .m_eth_src_mac(rx0_eth_src_mac),
+    .m_eth_type(rx0_eth_type),
+    .m_eth_payload_axis_tdata(rx0_eth_payload_axis_tdata),
+    .m_eth_payload_axis_tkeep(rx0_eth_payload_axis_tkeep),
+    .m_eth_payload_axis_tvalid(rx0_eth_payload_axis_tvalid),
+    .m_eth_payload_axis_tready(rx0_eth_payload_axis_tready),
+    .m_eth_payload_axis_tlast(rx0_eth_payload_axis_tlast),
+    .m_eth_payload_axis_tuser(rx0_eth_payload_axis_tuser),
 
-    .error_header_early_termination(bridge_0_to_1_error_header_early_termination)
+    .busy(),
+    .error_header_early_termination(rx0_eth_error_header_early_termination)
 );
 
-de2_eth_frame_rebuild_8
-frame_rebuild_1_to_0_inst (
+eth_axis_tx
+eth_axis_tx_1_inst (
     .clk(clk),
     .rst(mac_rst),
 
-    .s_axis_tdata(rx1_axis_tdata),
-    .s_axis_tvalid(rx1_axis_tvalid),
-    .s_axis_tready(rx1_axis_tready),
-    .s_axis_tlast(rx1_axis_tlast),
-    .s_axis_tuser(rx1_axis_tuser),
-
-    .m_axis_tdata(bridge_1_to_0_axis_tdata),
-    .m_axis_tvalid(bridge_1_to_0_axis_tvalid),
-    .m_axis_tready(bridge_1_to_0_axis_tready),
-    .m_axis_tlast(bridge_1_to_0_axis_tlast),
-    .m_axis_tuser(bridge_1_to_0_axis_tuser),
-
-    .error_header_early_termination(bridge_1_to_0_error_header_early_termination)
-);
-
-de2_packet_processing_load_8 #(
-    .STATE_WIDTH(10240),
-    .STATUS_WIDTH(16)
-)
-packet_processing_load_0_to_1_inst (
-    .clk(clk),
-    .rst(mac_rst),
-
-    .s_axis_tdata(bridge_0_to_1_axis_tdata),
-    .s_axis_tvalid(bridge_0_to_1_axis_tvalid),
-    .s_axis_tready(bridge_0_to_1_axis_tready),
-    .s_axis_tlast(bridge_0_to_1_axis_tlast),
-    .s_axis_tuser(bridge_0_to_1_axis_tuser),
-
-    .m_axis_tdata(processed_0_to_1_axis_tdata),
-    .m_axis_tvalid(processed_0_to_1_axis_tvalid),
-    .m_axis_tready(processed_0_to_1_axis_tready),
-    .m_axis_tlast(processed_0_to_1_axis_tlast),
-    .m_axis_tuser(processed_0_to_1_axis_tuser),
-
-    .status(packet_load_status_0_to_1)
-);
-
-de2_packet_processing_load_8 #(
-    .STATE_WIDTH(10240),
-    .STATUS_WIDTH(16)
-)
-packet_processing_load_1_to_0_inst (
-    .clk(clk),
-    .rst(mac_rst),
-
-    .s_axis_tdata(bridge_1_to_0_axis_tdata),
-    .s_axis_tvalid(bridge_1_to_0_axis_tvalid),
-    .s_axis_tready(bridge_1_to_0_axis_tready),
-    .s_axis_tlast(bridge_1_to_0_axis_tlast),
-    .s_axis_tuser(bridge_1_to_0_axis_tuser),
-
-    .m_axis_tdata(processed_1_to_0_axis_tdata),
-    .m_axis_tvalid(processed_1_to_0_axis_tvalid),
-    .m_axis_tready(processed_1_to_0_axis_tready),
-    .m_axis_tlast(processed_1_to_0_axis_tlast),
-    .m_axis_tuser(processed_1_to_0_axis_tuser),
-
-    .status(packet_load_status_1_to_0)
-);
-
-axis_fifo #(
-    .DEPTH(8192),
-    .DATA_WIDTH(8),
-    .KEEP_ENABLE(0),
-    .ID_ENABLE(0),
-    .DEST_ENABLE(0),
-    .USER_ENABLE(1),
-    .USER_WIDTH(1),
-    .FRAME_FIFO(1),
-    .DROP_BAD_FRAME(0),
-    .DROP_WHEN_FULL(0)
-)
-bridge_fifo_0_to_1 (
-    .clk(clk),
-    .rst(mac_rst),
-
-    .s_axis_tdata(processed_0_to_1_axis_tdata),
-    .s_axis_tkeep(1'b1),
-    .s_axis_tvalid(processed_0_to_1_axis_tvalid),
-    .s_axis_tready(processed_0_to_1_axis_tready),
-    .s_axis_tlast(processed_0_to_1_axis_tlast),
-    .s_axis_tid(8'd0),
-    .s_axis_tdest(8'd0),
-    .s_axis_tuser(processed_0_to_1_axis_tuser),
+    .s_eth_hdr_valid(rx0_eth_hdr_valid),
+    .s_eth_hdr_ready(rx0_eth_hdr_ready),
+    .s_eth_dest_mac(rx0_eth_dest_mac),
+    .s_eth_src_mac(rx0_eth_src_mac),
+    .s_eth_type(rx0_eth_type),
+    .s_eth_payload_axis_tdata(rx0_eth_payload_axis_tdata),
+    .s_eth_payload_axis_tkeep(rx0_eth_payload_axis_tkeep),
+    .s_eth_payload_axis_tvalid(rx0_eth_payload_axis_tvalid),
+    .s_eth_payload_axis_tready(rx0_eth_payload_axis_tready),
+    .s_eth_payload_axis_tlast(rx0_eth_payload_axis_tlast),
+    .s_eth_payload_axis_tuser(rx0_eth_payload_axis_tuser),
 
     .m_axis_tdata(tx1_axis_tdata),
     .m_axis_tkeep(),
     .m_axis_tvalid(tx1_axis_tvalid),
     .m_axis_tready(tx1_axis_tready),
     .m_axis_tlast(tx1_axis_tlast),
-    .m_axis_tid(),
-    .m_axis_tdest(),
     .m_axis_tuser(tx1_axis_tuser),
 
-    .pause_req(1'b0),
-    .pause_ack(),
-
-    .status_depth(),
-    .status_depth_commit(),
-    .status_overflow(fifo_0_to_1_overflow),
-    .status_bad_frame(fifo_0_to_1_bad_frame),
-    .status_good_frame(fifo_0_to_1_good_frame)
+    .busy()
 );
 
-axis_fifo #(
-    .DEPTH(8192),
-    .DATA_WIDTH(8),
-    .KEEP_ENABLE(0),
-    .ID_ENABLE(0),
-    .DEST_ENABLE(0),
-    .USER_ENABLE(1),
-    .USER_WIDTH(1),
-    .FRAME_FIFO(1),
-    .DROP_BAD_FRAME(0),
-    .DROP_WHEN_FULL(0)
-)
-bridge_fifo_1_to_0 (
+eth_axis_rx
+eth_axis_rx_1_inst (
     .clk(clk),
     .rst(mac_rst),
 
-    .s_axis_tdata(processed_1_to_0_axis_tdata),
+    .s_axis_tdata(rx1_axis_tdata),
     .s_axis_tkeep(1'b1),
-    .s_axis_tvalid(processed_1_to_0_axis_tvalid),
-    .s_axis_tready(processed_1_to_0_axis_tready),
-    .s_axis_tlast(processed_1_to_0_axis_tlast),
-    .s_axis_tid(8'd0),
-    .s_axis_tdest(8'd0),
-    .s_axis_tuser(processed_1_to_0_axis_tuser),
+    .s_axis_tvalid(rx1_axis_tvalid),
+    .s_axis_tready(rx1_axis_tready),
+    .s_axis_tlast(rx1_axis_tlast),
+    .s_axis_tuser(rx1_axis_tuser),
+
+    .m_eth_hdr_valid(rx1_eth_hdr_valid),
+    .m_eth_hdr_ready(rx1_eth_hdr_ready),
+    .m_eth_dest_mac(rx1_eth_dest_mac),
+    .m_eth_src_mac(rx1_eth_src_mac),
+    .m_eth_type(rx1_eth_type),
+    .m_eth_payload_axis_tdata(rx1_eth_payload_axis_tdata),
+    .m_eth_payload_axis_tkeep(rx1_eth_payload_axis_tkeep),
+    .m_eth_payload_axis_tvalid(rx1_eth_payload_axis_tvalid),
+    .m_eth_payload_axis_tready(rx1_eth_payload_axis_tready),
+    .m_eth_payload_axis_tlast(rx1_eth_payload_axis_tlast),
+    .m_eth_payload_axis_tuser(rx1_eth_payload_axis_tuser),
+
+    .busy(),
+    .error_header_early_termination(rx1_eth_error_header_early_termination)
+);
+
+eth_axis_tx
+eth_axis_tx_0_inst (
+    .clk(clk),
+    .rst(mac_rst),
+
+    .s_eth_hdr_valid(rx1_eth_hdr_valid),
+    .s_eth_hdr_ready(rx1_eth_hdr_ready),
+    .s_eth_dest_mac(rx1_eth_dest_mac),
+    .s_eth_src_mac(rx1_eth_src_mac),
+    .s_eth_type(rx1_eth_type),
+    .s_eth_payload_axis_tdata(rx1_eth_payload_axis_tdata),
+    .s_eth_payload_axis_tkeep(rx1_eth_payload_axis_tkeep),
+    .s_eth_payload_axis_tvalid(rx1_eth_payload_axis_tvalid),
+    .s_eth_payload_axis_tready(rx1_eth_payload_axis_tready),
+    .s_eth_payload_axis_tlast(rx1_eth_payload_axis_tlast),
+    .s_eth_payload_axis_tuser(rx1_eth_payload_axis_tuser),
 
     .m_axis_tdata(tx0_axis_tdata),
     .m_axis_tkeep(),
     .m_axis_tvalid(tx0_axis_tvalid),
     .m_axis_tready(tx0_axis_tready),
     .m_axis_tlast(tx0_axis_tlast),
-    .m_axis_tid(),
-    .m_axis_tdest(),
     .m_axis_tuser(tx0_axis_tuser),
 
-    .pause_req(1'b0),
-    .pause_ack(),
-
-    .status_depth(),
-    .status_depth_commit(),
-    .status_overflow(fifo_1_to_0_overflow),
-    .status_bad_frame(fifo_1_to_0_bad_frame),
-    .status_good_frame(fifo_1_to_0_good_frame)
+    .busy()
 );
 
 eth_mac_1g_rgmii_fifo #(
@@ -654,254 +580,6 @@ eth_mac_1_inst (
     .cfg_tx_enable(1'b1),
     .cfg_rx_enable(1'b1)
 );
-
-endmodule
-
-module de2_packet_processing_load_8 #
-(
-    parameter STATE_WIDTH = 12288,
-    parameter STATUS_WIDTH = 16
-)
-(
-    input  wire                    clk,
-    input  wire                    rst,
-
-    input  wire [7:0]              s_axis_tdata,
-    input  wire                    s_axis_tvalid,
-    output wire                    s_axis_tready,
-    input  wire                    s_axis_tlast,
-    input  wire                    s_axis_tuser,
-
-    output wire [7:0]              m_axis_tdata,
-    output wire                    m_axis_tvalid,
-    input  wire                    m_axis_tready,
-    output wire                    m_axis_tlast,
-    output wire                    m_axis_tuser,
-
-    output wire [STATUS_WIDTH-1:0] status
-);
-
-localparam STATUS_STRIDE = STATE_WIDTH / STATUS_WIDTH;
-localparam MIX_SEGMENT_WIDTH = 2048;
-localparam MIX_SEGMENT_COUNT = STATE_WIDTH / MIX_SEGMENT_WIDTH;
-localparam [STATE_WIDTH-1:0] RESET_PATTERN = {STATE_WIDTH{1'b1}};
-
-wire axis_beat = s_axis_tvalid && s_axis_tready;
-
-(* preserve, noprune *) reg [STATE_WIDTH-1:0] packet_mix_reg = RESET_PATTERN;
-(* preserve, noprune *) reg [31:0] byte_count_reg = 32'd0;
-(* preserve, noprune *) reg [31:0] frame_count_reg = 32'd0;
-
-wire [STATE_WIDTH-1:0] packet_mix_next;
-
-assign s_axis_tready = m_axis_tready;
-
-assign m_axis_tdata = s_axis_tdata;
-assign m_axis_tvalid = s_axis_tvalid;
-assign m_axis_tlast = s_axis_tlast;
-assign m_axis_tuser = s_axis_tuser;
-
-genvar status_index;
-genvar mix_segment;
-genvar mix_index;
-generate
-    for (mix_segment = 0; mix_segment < MIX_SEGMENT_COUNT; mix_segment = mix_segment + 1) begin : mix_segment_gen
-        for (mix_index = 0; mix_index < MIX_SEGMENT_WIDTH; mix_index = mix_index + 1) begin : mix_gen
-            localparam ABS_INDEX = mix_segment*MIX_SEGMENT_WIDTH + mix_index;
-            localparam TAP_INDEX = (ABS_INDEX + 13) % STATE_WIDTH;
-            localparam DATA_INDEX = ABS_INDEX % 8;
-            localparam BYTE_COUNT_INDEX = ABS_INDEX % 32;
-            localparam FRAME_COUNT_INDEX = (ABS_INDEX + 11) % 32;
-            localparam LAST_ENABLE = (ABS_INDEX % 5) == 0;
-            localparam USER_ENABLE = (ABS_INDEX % 7) == 0;
-
-            assign packet_mix_next[ABS_INDEX] =
-                packet_mix_reg[ABS_INDEX] ^
-                packet_mix_reg[TAP_INDEX] ^
-                s_axis_tdata[DATA_INDEX] ^
-                byte_count_reg[BYTE_COUNT_INDEX] ^
-                frame_count_reg[FRAME_COUNT_INDEX] ^
-                (LAST_ENABLE ? s_axis_tlast : 1'b0) ^
-                (USER_ENABLE ? s_axis_tuser : 1'b0);
-        end
-    end
-
-    for (status_index = 0; status_index < STATUS_WIDTH; status_index = status_index + 1) begin : status_gen
-        assign status[status_index] =
-            packet_mix_reg[status_index*STATUS_STRIDE] ^
-            packet_mix_reg[status_index*STATUS_STRIDE + STATUS_STRIDE/2] ^
-            packet_mix_reg[status_index*STATUS_STRIDE + STATUS_STRIDE-1] ^
-            byte_count_reg[status_index] ^
-            frame_count_reg[status_index];
-    end
-endgenerate
-
-always @(posedge clk) begin
-    if (rst) begin
-        packet_mix_reg <= RESET_PATTERN;
-        byte_count_reg <= 32'd0;
-        frame_count_reg <= 32'd0;
-    end else if (axis_beat) begin
-        packet_mix_reg <= packet_mix_next;
-        byte_count_reg <= byte_count_reg + 1'b1;
-
-        if (s_axis_tlast) begin
-            frame_count_reg <= frame_count_reg + 1'b1;
-        end
-    end
-end
-
-endmodule
-
-module de2_eth_frame_rebuild_8 (
-    input  wire       clk,
-    input  wire       rst,
-
-    input  wire [7:0] s_axis_tdata,
-    input  wire       s_axis_tvalid,
-    output wire       s_axis_tready,
-    input  wire       s_axis_tlast,
-    input  wire       s_axis_tuser,
-
-    output wire [7:0] m_axis_tdata,
-    output wire       m_axis_tvalid,
-    input  wire       m_axis_tready,
-    output wire       m_axis_tlast,
-    output wire       m_axis_tuser,
-
-    output wire       error_header_early_termination
-);
-
-localparam [1:0]
-    STATE_READ_HEADER      = 2'd0,
-    STATE_WRITE_HEADER     = 2'd1,
-    STATE_TRANSFER_PAYLOAD = 2'd2;
-
-localparam [3:0] ETH_HEADER_LEN = 4'd14;
-
-reg [1:0] state_reg = STATE_READ_HEADER;
-reg [3:0] hdr_ptr_reg = 4'd0;
-reg [3:0] header_len_reg = ETH_HEADER_LEN;
-reg header_last_reg = 1'b0;
-reg header_user_reg = 1'b0;
-reg error_header_early_termination_reg = 1'b0;
-
-reg [47:0] eth_dest_mac_reg = 48'd0;
-reg [47:0] eth_src_mac_reg = 48'd0;
-reg [15:0] eth_type_reg = 16'd0;
-
-wire write_header_last = hdr_ptr_reg == header_len_reg - 4'd1;
-wire read_header = state_reg == STATE_READ_HEADER;
-wire write_header = state_reg == STATE_WRITE_HEADER;
-wire transfer_payload = state_reg == STATE_TRANSFER_PAYLOAD;
-
-assign s_axis_tready = read_header || (transfer_payload && m_axis_tready);
-
-assign m_axis_tdata = write_header ? header_byte(hdr_ptr_reg) : s_axis_tdata;
-assign m_axis_tvalid = write_header || (transfer_payload && s_axis_tvalid);
-assign m_axis_tlast = write_header ? header_last_reg && write_header_last : s_axis_tlast;
-assign m_axis_tuser = write_header ? header_user_reg && write_header_last : s_axis_tuser;
-
-assign error_header_early_termination = error_header_early_termination_reg;
-
-function [7:0] header_byte;
-    input [3:0] offset;
-    begin
-        case (offset)
-            4'd0:  header_byte = eth_dest_mac_reg[47:40];
-            4'd1:  header_byte = eth_dest_mac_reg[39:32];
-            4'd2:  header_byte = eth_dest_mac_reg[31:24];
-            4'd3:  header_byte = eth_dest_mac_reg[23:16];
-            4'd4:  header_byte = eth_dest_mac_reg[15:8];
-            4'd5:  header_byte = eth_dest_mac_reg[7:0];
-            4'd6:  header_byte = eth_src_mac_reg[47:40];
-            4'd7:  header_byte = eth_src_mac_reg[39:32];
-            4'd8:  header_byte = eth_src_mac_reg[31:24];
-            4'd9:  header_byte = eth_src_mac_reg[23:16];
-            4'd10: header_byte = eth_src_mac_reg[15:8];
-            4'd11: header_byte = eth_src_mac_reg[7:0];
-            4'd12: header_byte = eth_type_reg[15:8];
-            4'd13: header_byte = eth_type_reg[7:0];
-            default: header_byte = 8'd0;
-        endcase
-    end
-endfunction
-
-always @(posedge clk) begin
-    error_header_early_termination_reg <= 1'b0;
-
-    if (rst) begin
-        state_reg <= STATE_READ_HEADER;
-        hdr_ptr_reg <= 4'd0;
-        header_len_reg <= ETH_HEADER_LEN;
-        header_last_reg <= 1'b0;
-        header_user_reg <= 1'b0;
-        error_header_early_termination_reg <= 1'b0;
-        eth_dest_mac_reg <= 48'd0;
-        eth_src_mac_reg <= 48'd0;
-        eth_type_reg <= 16'd0;
-    end else begin
-        case (state_reg)
-            STATE_READ_HEADER: begin
-                if (s_axis_tvalid && s_axis_tready) begin
-                    case (hdr_ptr_reg)
-                        4'd0:  eth_dest_mac_reg[47:40] <= s_axis_tdata;
-                        4'd1:  eth_dest_mac_reg[39:32] <= s_axis_tdata;
-                        4'd2:  eth_dest_mac_reg[31:24] <= s_axis_tdata;
-                        4'd3:  eth_dest_mac_reg[23:16] <= s_axis_tdata;
-                        4'd4:  eth_dest_mac_reg[15:8] <= s_axis_tdata;
-                        4'd5:  eth_dest_mac_reg[7:0] <= s_axis_tdata;
-                        4'd6:  eth_src_mac_reg[47:40] <= s_axis_tdata;
-                        4'd7:  eth_src_mac_reg[39:32] <= s_axis_tdata;
-                        4'd8:  eth_src_mac_reg[31:24] <= s_axis_tdata;
-                        4'd9:  eth_src_mac_reg[23:16] <= s_axis_tdata;
-                        4'd10: eth_src_mac_reg[15:8] <= s_axis_tdata;
-                        4'd11: eth_src_mac_reg[7:0] <= s_axis_tdata;
-                        4'd12: eth_type_reg[15:8] <= s_axis_tdata;
-                        4'd13: eth_type_reg[7:0] <= s_axis_tdata;
-                    endcase
-
-                    if (s_axis_tlast) begin
-                        header_len_reg <= hdr_ptr_reg + 4'd1;
-                        header_last_reg <= 1'b1;
-                        header_user_reg <= s_axis_tuser || hdr_ptr_reg != ETH_HEADER_LEN - 4'd1;
-                        error_header_early_termination_reg <= hdr_ptr_reg != ETH_HEADER_LEN - 4'd1;
-                        hdr_ptr_reg <= 4'd0;
-                        state_reg <= STATE_WRITE_HEADER;
-                    end else if (hdr_ptr_reg == ETH_HEADER_LEN - 4'd1) begin
-                        header_len_reg <= ETH_HEADER_LEN;
-                        header_last_reg <= 1'b0;
-                        header_user_reg <= 1'b0;
-                        hdr_ptr_reg <= 4'd0;
-                        state_reg <= STATE_WRITE_HEADER;
-                    end else begin
-                        hdr_ptr_reg <= hdr_ptr_reg + 4'd1;
-                    end
-                end
-            end
-            STATE_WRITE_HEADER: begin
-                if (m_axis_tready) begin
-                    if (write_header_last) begin
-                        hdr_ptr_reg <= 4'd0;
-                        state_reg <= header_last_reg ? STATE_READ_HEADER : STATE_TRANSFER_PAYLOAD;
-                    end else begin
-                        hdr_ptr_reg <= hdr_ptr_reg + 4'd1;
-                    end
-                end
-            end
-            STATE_TRANSFER_PAYLOAD: begin
-                if (s_axis_tvalid && s_axis_tready && s_axis_tlast) begin
-                    hdr_ptr_reg <= 4'd0;
-                    state_reg <= STATE_READ_HEADER;
-                end
-            end
-            default: begin
-                state_reg <= STATE_READ_HEADER;
-                hdr_ptr_reg <= 4'd0;
-            end
-        endcase
-    end
-end
 
 endmodule
 
