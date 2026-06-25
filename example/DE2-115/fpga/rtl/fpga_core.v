@@ -119,7 +119,7 @@ wire       tx1_axis_tready;
 wire       tx1_axis_tlast;
 wire       tx1_axis_tuser;
 
-// Ethernet frame interfaces, MAC 0 RX to MAC 1 TX
+// Ethernet frame interface, MAC 0 RX to MAC 1 TX
 wire        rx0_eth_hdr_valid;
 wire        rx0_eth_hdr_ready;
 wire [47:0] rx0_eth_dest_mac;
@@ -133,7 +133,7 @@ wire        rx0_eth_payload_axis_tlast;
 wire        rx0_eth_payload_axis_tuser;
 wire        rx0_eth_error_header_early_termination;
 
-// Ethernet frame interfaces, MAC 1 RX to MAC 0 TX
+// Ethernet frame interface, MAC 1 RX to MAC 0 TX
 wire        rx1_eth_hdr_valid;
 wire        rx1_eth_hdr_ready;
 wire [47:0] rx1_eth_dest_mac;
@@ -147,34 +147,23 @@ wire        rx1_eth_payload_axis_tlast;
 wire        rx1_eth_payload_axis_tuser;
 wire        rx1_eth_error_header_early_termination;
 
-wire fifo_0_to_1_overflow = 1'b0;
-wire fifo_1_to_0_overflow = 1'b0;
-
 wire mac0_rx_error_bad_frame;
 wire mac0_rx_error_bad_fcs;
 wire mac0_rx_fifo_overflow;
 wire mac0_rx_fifo_bad_frame;
-wire mac0_rx_fifo_good_frame;
 wire mac0_tx_fifo_overflow;
 wire mac0_tx_fifo_bad_frame;
-wire mac0_tx_fifo_good_frame;
-wire [1:0] mac0_speed;
 
 wire mac1_rx_error_bad_frame;
 wire mac1_rx_error_bad_fcs;
 wire mac1_rx_fifo_overflow;
 wire mac1_rx_fifo_bad_frame;
-wire mac1_rx_fifo_good_frame;
 wire mac1_tx_fifo_overflow;
 wire mac1_tx_fifo_bad_frame;
-wire mac1_tx_fifo_good_frame;
-wire [1:0] mac1_speed;
 
 wire phy0_config_done;
 wire phy1_config_done;
 wire phy_config_done = phy0_config_done && phy1_config_done;
-wire phy0_config_busy;
-wire phy1_config_busy;
 wire phy0_link_up;
 wire phy1_link_up;
 wire phy0_link_1g;
@@ -183,16 +172,8 @@ wire phy0_full_duplex;
 wire phy1_full_duplex;
 wire phy0_link_live = phy0_config_done && phy0_link_up && phy0_full_duplex;
 wire phy1_link_live = phy1_config_done && phy1_link_up && phy1_full_duplex;
-wire phy0_link_ready = phy0_link_live && phy0_link_1g;
-wire phy1_link_ready = phy1_link_live && phy1_link_1g;
-wire phy_link_ready = phy0_link_ready && phy1_link_ready;
 
-wire rx0_frame = rx0_axis_tvalid && rx0_axis_tready && rx0_axis_tlast;
-wire rx1_frame = rx1_axis_tvalid && rx1_axis_tready && rx1_axis_tlast;
-wire tx0_frame = tx0_axis_tvalid && tx0_axis_tready && tx0_axis_tlast;
-wire tx1_frame = tx1_axis_tvalid && tx1_axis_tready && tx1_axis_tlast;
-wire forward_0_to_1 = rx0_frame && !rx0_axis_tuser;
-wire forward_1_to_0 = rx1_frame && !rx1_axis_tuser;
+wire error_status;
 
 reg [23:0] phy_reset_counter_reg = 24'd0;
 reg phy_reset_n_reg = 1'b0;
@@ -215,8 +196,6 @@ end
 assign phy0_reset_n = phy_reset_n_reg;
 assign phy1_reset_n = phy_reset_n_reg;
 
-assign gpio = 36'd0;
-
 mdio_phy_config #(
     .PHY_ADDR(5'b10000)
 )
@@ -228,7 +207,7 @@ phy0_mdio_config_inst (
     .mdio_i(phy0_mdio_i),
     .mdio_o(phy0_mdio_o),
     .mdio_t(phy0_mdio_t),
-    .busy(phy0_config_busy),
+    .busy(),
     .done(phy0_config_done),
     .link_up(phy0_link_up),
     .link_1g(phy0_link_1g),
@@ -246,95 +225,34 @@ phy1_mdio_config_inst (
     .mdio_i(phy1_mdio_i),
     .mdio_o(phy1_mdio_o),
     .mdio_t(phy1_mdio_t),
-    .busy(phy1_config_busy),
+    .busy(),
     .done(phy1_config_done),
     .link_up(phy1_link_up),
     .link_1g(phy1_link_1g),
     .full_duplex(phy1_full_duplex)
 );
 
-reg [25:0] heartbeat_counter_reg = 26'd0;
-reg [31:0] forward_count_0_to_1_reg = 32'd0;
-reg [31:0] forward_count_1_to_0_reg = 32'd0;
-reg [23:0] rx0_activity_timer_reg = 24'd0;
-reg [23:0] rx1_activity_timer_reg = 24'd0;
-reg [23:0] tx0_activity_timer_reg = 24'd0;
-reg [23:0] tx1_activity_timer_reg = 24'd0;
+assign gpio = 36'd0;
 
-always @(posedge clk) begin
-    if (rst) begin
-        heartbeat_counter_reg <= 26'd0;
-    end else begin
-        heartbeat_counter_reg <= heartbeat_counter_reg + 1'b1;
-    end
+assign error_status =
+    mac0_rx_error_bad_frame ||
+    mac0_rx_error_bad_fcs ||
+    mac1_rx_error_bad_frame ||
+    mac1_rx_error_bad_fcs ||
+    rx0_eth_error_header_early_termination ||
+    rx1_eth_error_header_early_termination;
 
-    if (mac_rst) begin
-        forward_count_0_to_1_reg <= 32'd0;
-        forward_count_1_to_0_reg <= 32'd0;
-        rx0_activity_timer_reg <= 24'd0;
-        rx1_activity_timer_reg <= 24'd0;
-        tx0_activity_timer_reg <= 24'd0;
-        tx1_activity_timer_reg <= 24'd0;
-    end else begin
-        if (rx0_activity_timer_reg != 0) begin
-            rx0_activity_timer_reg <= rx0_activity_timer_reg - 1'b1;
-        end
-
-        if (rx1_activity_timer_reg != 0) begin
-            rx1_activity_timer_reg <= rx1_activity_timer_reg - 1'b1;
-        end
-
-        if (tx0_activity_timer_reg != 0) begin
-            tx0_activity_timer_reg <= tx0_activity_timer_reg - 1'b1;
-        end
-
-        if (tx1_activity_timer_reg != 0) begin
-            tx1_activity_timer_reg <= tx1_activity_timer_reg - 1'b1;
-        end
-
-        if (rx0_frame) begin
-            rx0_activity_timer_reg <= {24{1'b1}};
-        end
-
-        if (rx1_frame) begin
-            rx1_activity_timer_reg <= {24{1'b1}};
-        end
-
-        if (tx0_frame) begin
-            tx0_activity_timer_reg <= {24{1'b1}};
-        end
-
-        if (tx1_frame) begin
-            tx1_activity_timer_reg <= {24{1'b1}};
-        end
-
-        if (forward_0_to_1) begin
-            forward_count_0_to_1_reg <= forward_count_0_to_1_reg + 1'b1;
-        end
-
-        if (forward_1_to_0) begin
-            forward_count_1_to_0_reg <= forward_count_1_to_0_reg + 1'b1;
-        end
-    end
-end
-
-assign ledg = {
-    !mac_rst,
-    phy1_link_live,
-    phy0_link_live,
-    mac0_rx_error_bad_frame || mac0_rx_error_bad_fcs || mac1_rx_error_bad_frame || mac1_rx_error_bad_fcs ||
-        rx0_eth_error_header_early_termination || rx1_eth_error_header_early_termination,
-    tx1_activity_timer_reg != 0,
-    tx0_activity_timer_reg != 0,
-    rx1_activity_timer_reg != 0,
-    rx0_activity_timer_reg != 0,
-    heartbeat_counter_reg[25]
-};
+assign ledg = {!mac_rst, phy1_link_live, phy0_link_live, error_status, 5'b00000};
 
 assign ledr = {
-    phy_link_ready,
-    fifo_1_to_0_overflow,
-    fifo_0_to_1_overflow,
+    phy_config_done,
+    phy1_link_up,
+    phy1_link_1g,
+    phy1_full_duplex,
+    phy0_link_up,
+    phy0_link_1g,
+    phy0_full_duplex,
+    1'b0,
     mac1_rx_fifo_overflow,
     mac0_rx_fifo_overflow,
     mac1_tx_fifo_overflow,
@@ -343,13 +261,8 @@ assign ledr = {
     mac0_rx_fifo_bad_frame,
     mac1_tx_fifo_bad_frame,
     mac0_tx_fifo_bad_frame,
-    phy1_link_up,
-    phy1_link_1g,
-    phy0_link_up,
-    phy0_link_1g,
-    heartbeat_counter_reg[25],
-    forward_count_1_to_0_reg[0],
-    forward_count_0_to_1_reg[0]
+    phy1_int_n,
+    phy0_int_n
 };
 
 assign hex0 = HEX_OFF;
@@ -483,7 +396,7 @@ eth_mac_1g_rgmii_fifo #(
     .RX_FIFO_DEPTH(4096),
     .RX_FRAME_FIFO(1)
 )
-eth_mac_inst (
+eth_mac_0_inst (
     .gtx_clk(clk),
     .gtx_clk90(clk90),
     .gtx_rst(mac_rst),
@@ -514,13 +427,13 @@ eth_mac_inst (
     .tx_error_underflow(),
     .tx_fifo_overflow(mac0_tx_fifo_overflow),
     .tx_fifo_bad_frame(mac0_tx_fifo_bad_frame),
-    .tx_fifo_good_frame(mac0_tx_fifo_good_frame),
+    .tx_fifo_good_frame(),
     .rx_error_bad_frame(mac0_rx_error_bad_frame),
     .rx_error_bad_fcs(mac0_rx_error_bad_fcs),
     .rx_fifo_overflow(mac0_rx_fifo_overflow),
     .rx_fifo_bad_frame(mac0_rx_fifo_bad_frame),
-    .rx_fifo_good_frame(mac0_rx_fifo_good_frame),
-    .speed(mac0_speed),
+    .rx_fifo_good_frame(),
+    .speed(),
 
     .cfg_ifg(8'd12),
     .cfg_tx_enable(1'b1),
@@ -568,13 +481,13 @@ eth_mac_1_inst (
     .tx_error_underflow(),
     .tx_fifo_overflow(mac1_tx_fifo_overflow),
     .tx_fifo_bad_frame(mac1_tx_fifo_bad_frame),
-    .tx_fifo_good_frame(mac1_tx_fifo_good_frame),
+    .tx_fifo_good_frame(),
     .rx_error_bad_frame(mac1_rx_error_bad_frame),
     .rx_error_bad_fcs(mac1_rx_error_bad_fcs),
     .rx_fifo_overflow(mac1_rx_fifo_overflow),
     .rx_fifo_bad_frame(mac1_rx_fifo_bad_frame),
-    .rx_fifo_good_frame(mac1_rx_fifo_good_frame),
-    .speed(mac1_speed),
+    .rx_fifo_good_frame(),
+    .speed(),
 
     .cfg_ifg(8'd12),
     .cfg_tx_enable(1'b1),
